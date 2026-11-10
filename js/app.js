@@ -2,6 +2,7 @@
   const $ = (id) => document.getElementById(id);
   const SESSION_KEY = 'justdoit.user';
   const STATUS_LABEL = { PENDING: 'Pendiente', INPROGRESS: 'En progreso', DONE: 'Hecha' };
+  const NEXT_STATUS = { PENDING: 'INPROGRESS', INPROGRESS: 'DONE' };
 
   let currentUser = null;
   let users = [];
@@ -59,9 +60,14 @@
     e.preventDefault();
     guard(async () => {
       const name = $('login-username').value.trim().toLowerCase();
-      const list = await Api.users.list();
-      const found = list.find((u) => (u.userName || '').toLowerCase() === name);
-      if (!found) throw new Error('Usuario no encontrado');
+      if (!name) throw new Error('Usuario no encontrado');
+      let found;
+      try {
+        found = await Api.users.byUsername(name);
+      } catch (err) {
+        if (err.message.includes('404')) throw new Error('Usuario no encontrado');
+        throw err;
+      }
       startSession(found);
     });
   };
@@ -119,6 +125,7 @@
           el('button', { class: 'btn danger small', onclick: () => deleteUser(u) }, 'Eliminar'))));
     });
   }
+
 
   function openUserDialog(user, fromLogin = false) {
     editingUserId = user ? user.id : null;
@@ -191,10 +198,20 @@
           el('span', { class: 'meta' }, '#' + t.id)),
         el('p', {}, t.description || ''),
         el('div', { class: 'meta' }, 'Límite: ' + (t.deadline || '-') + ' · Creada: ' + fmtDate(t.createdAt)),
-        select,
-        el('div', { class: 'row' },
-          el('button', { class: 'btn ghost small', onclick: () => openTaskDialog(t) }, 'Editar'),
-          el('button', { class: 'btn danger small', onclick: () => deleteTask(t) }, 'Eliminar'))));
+          select,
+          el('div', { class: 'row' },
+              t.status !== 'DONE' ? el('button', { class: 'btn small', onclick: () => advanceTask(t) }, 'Avanzar') : '',
+              el('button', { class: 'btn ghost small', onclick: () => openTaskDialog(t) }, 'Editar'),
+              el('button', { class: 'btn danger small', onclick: () => deleteTask(t) }, 'Eliminar'))));
+    });
+  }
+
+  function advanceTask(t) {
+    const next = NEXT_STATUS[t.status];
+    if (!next) return;
+    guard(async () => {
+      await Api.tasks.update(targetUserId(), t.id, { status: next });
+      await loadTasks();
     });
   }
 
